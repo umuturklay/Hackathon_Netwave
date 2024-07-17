@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Netwave Car Crash Assistant</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #e0f7fa;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            background-image: url('{{ url_for('static', filename='carplay.jpg') }}');
+            background-size: cover;
+            background-position: cover;
+            height: 500px;
+            max-width: 900px;
+            margin: 30px auto;
+            background-color: #ffffff;
+            border-radius: 25px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        h1 {
+            text-align: center;
+            color: #00796b;
+        }
+        form {
+            display: flex;
+            flex-direction: column;
+            margin-bottom: 20px;
+        }
+        label {
+            font-size: 1.2em;
+            margin-bottom: 10px;
+            color: #00796b;
+        }
+        input[type="text"] {
+            padding: 10px;
+            font-size: 1em;
+            margin-bottom: 20px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            transition: border-color 0.3s;
+        }
+        input[type="text"]:focus {
+            border-color: #00796b;
+        }
+        button {
+            padding: 10px;
+            font-size: 1em;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-bottom: 10px;
+            transition: background-color 0.3s, transform 0.3s;
+        }
+        button#submit {
+            background-color: white;
+            color: white;
+        }
+        button#submit:hover {
+            background-color: white;
+        }
+        button#speechInput {
+            background-color: #2196f3;
+            color: white;
+        }
+        button#speechInput:hover {
+            background-color: #1976d2;
+        }
+        button:active {
+            transform: scale(0.98);
+        }
+        audio {
+            width: 100%;
+            margin-top: 20px;
+        }
+        p, h2 {
+            color: #00796b;
+        }
+        ul {
+            list-style-type: none;
+            padding: 0;
+        }
+        li {
+            background-color: #e0f2f1;
+            margin: 10px 0;
+            padding: 10px;
+            border: 1px solid #00796b;
+            border-radius: 4px;
+        }
+        .status {
+            margin-top: 20px;
+            font-size: 1.1em;
+            color: #666;
+        }
+
+          #audioPlayer {
+            display: none; /* Hide the audio player */
+        }
+
+        #chatForm {
+            width: 355px; /* Set the specific width */
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            margin-left: 90px;
+            background-color: gray;
+        }
+
+        #hospital
+    </style>
+</head>
+<body>
+    <h1>Netwave Car Crash Assistant</h1>
+      <div class="container">
+        <form id="chatForm">
+            <input type="text" id="content" name="content" required>
+            <!-- <button type="submit" id="submit">Submit</button> -->
+            <button type="button" style="padding-horizontal: 25px;" id="speechInput">Speech Input</button>
+        </form>
+        <audio id="audioPlayer" controls></audio>
+        <div class="status">
+            <p>Current working thread: <span id="currentThread"></span></p>
+            <p>Response time: <span id="responseTime"></span> ms</p>
+            <p id="status"></p>
+            <p id="address"></p>
+        </div>
+        <h2>Nearest Hospitals</h2>
+        <ul id="hospitals"></ul>
+    </div>
+
+
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            getLocation();
+            sendInitialMessage("Trafik kazası geçirdim"); // Send initial input when page loads
+        });
+
+        function getLocation() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(showPosition, showError);
+            } else {
+                document.getElementById("status").innerHTML = "Geolocation is not supported by this browser.";
+            }
+        }
+
+        function showPosition(position) {
+            var latitude = position.coords.latitude;
+            var longitude = position.coords.longitude;
+            document.getElementById("status").innerHTML = "Latitude: " + latitude + "<br>Longitude: " + longitude;
+
+            fetch('/location', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    latitude: latitude,
+                    longitude: longitude
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.address) {
+                    document.getElementById("address").innerHTML = "Address: " + data.address;
+
+                    fetch('/set_address', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            address: data.address
+                        })
+                    });
+                } else {
+                    document.getElementById("address").innerHTML = "Address not found";
+                }
+                var hospitalsList = document.getElementById("hospitals");
+                hospitalsList.innerHTML = "";
+                data.hospitals.forEach(function(hospital) {
+                    var listItem = document.createElement("li");
+                    listItem.textContent = `${hospital.name} (${hospital.lat}, ${hospital.lon}) - Distance: ${hospital.distance.toFixed(2)} km, Duration: ${hospital.duration.toFixed(2)} mins`;
+                    hospitalsList.appendChild(listItem);
+                });
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
+        }
+
+        function showError(error) {
+            switch(error.code) {
+                case error.PERMISSION_DENIED:
+                    document.getElementById("status").innerHTML = "User denied the request for Geolocation.";
+                    break;
+                case error.POSITION_UNAVAILABLE:
+                    document.getElementById("status").innerHTML = "Location information is unavailable.";
+                    break;
+                case error.TIMEOUT:
+                    document.getElementById("status").innerHTML = "The request to get user location timed out.";
+                    break;
+                case error.UNKNOWN_ERROR:
+                    document.getElementById("status").innerHTML = "An unknown error occurred.";
+                    break;
+            }
+        }
+
+        async function sendInitialMessage(content) {
+            const response = await fetch('/chat', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ content })
+            });
+            const data = await response.json();
+            if (data.status === "processing") {
+                while (true) {
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    const checkResponse = await fetch('/check_response');
+                    const checkData = await checkResponse.json();
+                    if (checkData.status === "ready") {
+                        const audioResponse = await fetch('/get_audio');
+                        const audioBlob = await audioResponse.blob();
+                        const audioUrl = URL.createObjectURL(audioBlob);
+                        const audioPlayer = document.getElementById('audioPlayer');
+                        audioPlayer.src = audioUrl;
+                        audioPlayer.play();
+                        document.getElementById('currentThread').innerText = checkData.thread;
+                        document.getElementById('responseTime').innerText = checkData.time;
+                        break;
+                    }
+                }
+            } else {
+                const audioBlob = await response.blob();
+                const audioUrl = URL.createObjectURL(audioBlob);
+                const audioPlayer = document.getElementById('audioPlayer');
+                audioPlayer.src = audioUrl;
+                audioPlayer.play();
+                const currentThreadResponse = await fetch('/current_thread');
+                const currentThreadData = await currentThreadResponse.json();
+                document.getElementById('currentThread').innerText = currentThreadData.thread;
+                document.getElementById('responseTime').innerText = currentThreadData.time;
+            }
+        }
+
+        document.getElementById('chatForm').onsubmit = async (event) => {
+            event.preventDefault();
+            const content = document.getElementById('content').value;
+            await sendMessage(content);
+        };
+
+        document.getElementById('speechInput').onclick = async () => {
+            const response = await fetch('/speech_to_text', { method: 'POST' });
+            const data = await response.json();
+            document.getElementById('content').value = data.text;
+            document.getElementById('chatForm').dispatchEvent(new Event('submit'));  // Trigger form submission
+        };
+
+        async function sendMessage(content) {
+            const startTime = performance.now();
+            const response = await fetch('/chat', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ content })
+            });
+            const data = await response.json();
+            if (data.status === "processing") {
+                while (true) {
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    const checkResponse = await fetch('/check_response');
+                    const checkData = await checkResponse.json();
+                    if (checkData.status === "ready") {
+                        const audioResponse = await fetch('/get_audio');
+                        const audioBlob = await audioResponse.blob();
+                        const audioUrl = URL.createObjectURL(audioBlob);
+                        const audioPlayer = document.getElementById('audioPlayer');
+                        audioPlayer.src = audioUrl;
+                        audioPlayer.play();
+                        document.getElementById('currentThread').innerText = checkData.thread;
+                        document.getElementById('responseTime').innerText = checkData.time;
+                        break;
+                    }
+                }
+            } else {
+                const endTime = performance.now();
+                const responseTime = Math.round(endTime - startTime);
+                document.getElementById('responseTime').innerText = responseTime;
+                const audioBlob = await response.blob();
+                const audioUrl = URL.createObjectURL(audioBlob);
+                const audioPlayer = document.getElementById('audioPlayer');
+                audioPlayer.src = audioUrl;
+                audioPlayer.play();
+                const currentThreadResponse = await fetch('/current_thread');
+                const currentThreadData = await currentThreadResponse.json();
+                document.getElementById('currentThread').innerText = currentThreadData.thread;
+                document.getElementById('responseTime').innerText = currentThreadData.time;
+            }
+        }
+    </script>
+</body>
+</html>
